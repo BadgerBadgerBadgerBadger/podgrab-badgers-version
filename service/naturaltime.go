@@ -71,7 +71,7 @@ func pastNaturalTime(base, value time.Time) string {
 	yesterday := startBase.Add(-24 * time.Hour)
 	dayBeforeYesterday := yesterday.Add(-24 * time.Hour)
 
-	//fmt.Println(value, days, startBase, yesterday, dayBeforeYesterday)
+	// fmt.Println(value, days, startBase, yesterday, dayBeforeYesterday)
 
 	if value.After(startBase) {
 		return fmt.Sprintf("%.0f hours ago", dur.Hours())

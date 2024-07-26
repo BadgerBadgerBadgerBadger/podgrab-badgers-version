@@ -4,7 +4,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -17,6 +17,7 @@ import (
 	"github.com/akhilrex/podgrab/model"
 	"github.com/antchfx/xmlquery"
 	strip "github.com/grokify/html-strip-tags-go"
+	pkgErrors "github.com/pkg/errors"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -35,7 +36,7 @@ func ParseOpml(content string) (model.OpmlModel, error) {
 	return response, err
 }
 
-//FetchURL is
+// FetchURL is
 func FetchURL(url string) (model.PodcastData, []byte, error) {
 	body, err := makeQuery(url)
 	if err != nil {
@@ -51,13 +52,6 @@ func GetPodcastById(id string) *db.Podcast {
 	db.GetPodcastById(id, &podcast)
 
 	return &podcast
-}
-func GetPodcastItemById(id string) *db.PodcastItem {
-	var podcastItem db.PodcastItem
-
-	db.GetPodcastItemById(id, &podcastItem)
-
-	return &podcastItem
 }
 
 func GetAllPodcastItemsByIds(podcastItemIds []string) (*[]db.PodcastItem, error) {
@@ -112,7 +106,7 @@ func AddOpml(content string) error {
 	model, err := ParseOpml(content)
 	if err != nil {
 		fmt.Println(err.Error())
-		return errors.New("Invalid file format")
+		return errors.New("invalid file format")
 	}
 	var wg sync.WaitGroup
 	for _, outline := range model.Body.Outline {
@@ -243,10 +237,10 @@ func AddPodcast(url string) (db.Podcast, error) {
 }
 
 func AddPodcastItems(podcast *db.Podcast, newPodcast bool) error {
-	//fmt.Println("Creating: " + podcast.ID)
+	// fmt.Println("Creating: " + podcast.ID)
 	data, _, err := FetchURL(podcast.URL)
 	if err != nil {
-		//log.Fatal(err)
+		// log.Fatal(err)
 		return err
 	}
 	setting := db.GetOrCreateSetting()
@@ -351,21 +345,7 @@ func AddPodcastItems(podcast *db.Podcast, newPodcast bool) error {
 	if (latestDate != time.Time{}) {
 		db.UpdateLastEpisodeDateForPodcast(podcast.ID, latestDate)
 	}
-	//go updateSizeFromUrl(itemsAdded)
 	return err
-}
-
-func updateSizeFromUrl(itemUrlMap map[string]string) {
-
-	for id, url := range itemUrlMap {
-		size, err := GetFileSizeFromUrl(url)
-		if err != nil {
-			size = 1
-		}
-
-		db.UpdatePodcastItemFileSize(id, size)
-	}
-
 }
 
 func UpdateAllFileSizes() {
@@ -549,7 +529,7 @@ func CheckMissingFiles() error {
 	data, err := db.GetAllPodcastItemsAlreadyDownloaded()
 	setting := db.GetOrCreateSetting()
 
-	//fmt.Println("Processing episodes: ", strconv.Itoa(len(*data)))
+	// fmt.Println("Processing episodes: ", strconv.Itoa(len(*data)))
 	if err != nil {
 		return err
 	}
@@ -570,7 +550,7 @@ func DeleteEpisodeFile(podcastItemId string) error {
 	var podcastItem db.PodcastItem
 	err := db.GetPodcastItemById(podcastItemId, &podcastItem)
 
-	//fmt.Println("Processing episodes: ", strconv.Itoa(len(*data)))
+	// fmt.Println("Processing episodes: ", strconv.Itoa(len(*data)))
 	if err != nil {
 		return err
 	}
@@ -592,7 +572,7 @@ func DownloadSingleEpisode(podcastItemId string) error {
 	var podcastItem db.PodcastItem
 	err := db.GetPodcastItemById(podcastItemId, &podcastItem)
 
-	//fmt.Println("Processing episodes: ", strconv.Itoa(len(*data)))
+	// fmt.Println("Processing episodes: ", strconv.Itoa(len(*data)))
 	if err != nil {
 		return err
 	}
@@ -708,8 +688,7 @@ func DeleteTag(id string) error {
 }
 
 func makeQuery(url string) ([]byte, error) {
-	//link := "https://www.goodreads.com/search/index.xml?q=Good%27s+Omens&key=" + "jCmNlIXjz29GoB8wYsrd0w"
-	//link := "https://www.goodreads.com/search/index.xml?key=jCmNlIXjz29GoB8wYsrd0w&q=Ender%27s+Game"
+
 	fmt.Println(url)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -723,10 +702,12 @@ func makeQuery(url string) ([]byte, error) {
 
 	defer resp.Body.Close()
 	fmt.Println("Response status:", resp.Status)
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, pkgErrors.Wrap(err, "failed to read response body")
+	}
 
 	return body, nil
-
 }
 func GetSearchFromGpodder(pod model.GPodcast) *model.CommonSearchResultModel {
 	p := new(model.CommonSearchResultModel)

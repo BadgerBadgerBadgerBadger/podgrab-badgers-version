@@ -3,8 +3,8 @@ package model
 import "math"
 
 type Pagination struct {
-	Page         int `uri:"page" query:"page" json:"page" form:"page" default:1`
-	Count        int `uri:"count" query:"count" json:"count" form:"count" default:20`
+	Page         int `uri:"page" query:"page" json:"page" form:"page" default:"1"`
+	Count        int `uri:"count" query:"count" json:"count" form:"count" default:"20"`
 	NextPage     int `uri:"nextPage" query:"nextPage" json:"nextPage" form:"nextPage"`
 	PreviousPage int `uri:"previousPage" query:"previousPage" json:"previousPage" form:"previousPage"`
 	TotalCount   int `uri:"totalCount" query:"totalCount" json:"totalCount" form:"totalCount"`
@@ -14,10 +14,10 @@ type Pagination struct {
 type EpisodeSort string
 
 const (
-	RELEASE_ASC   EpisodeSort = "release_asc"
-	RELEASE_DESC  EpisodeSort = "release_desc"
-	DURATION_ASC  EpisodeSort = "duration_asc"
-	DURATION_DESC EpisodeSort = "duration_desc"
+	ReleaseAsc   EpisodeSort = "release_asc"
+	ReleaseDesc  EpisodeSort = "release_desc"
+	DurationAsc  EpisodeSort = "duration_asc"
+	DurationDesc EpisodeSort = "duration_desc"
 )
 
 type EpisodesFilter struct {
@@ -38,7 +38,7 @@ func (filter *EpisodesFilter) VerifyPaginationValues() {
 		filter.Page = 1
 	}
 	if filter.Sorting == "" {
-		filter.Sorting = RELEASE_DESC
+		filter.Sorting = ReleaseDesc
 	}
 }
 

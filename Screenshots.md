@@ -14,7 +14,6 @@
 
 ![Podcast Episodes](images/podcast_episodes.jpg)
 
-
 ## Player
 
 ![Player](images/player.jpg)

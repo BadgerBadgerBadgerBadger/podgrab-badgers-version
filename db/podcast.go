@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-//Podcast is
+// Podcast is
 type Podcast struct {
 	Base
 	Title string
@@ -34,7 +34,7 @@ type Podcast struct {
 	IsPaused bool `gorm:"default:false"`
 }
 
-//PodcastItem is
+// PodcastItem is
 type PodcastItem struct {
 	Base
 	PodcastID string

@@ -9,5 +9,5 @@ services:
       - /path/to/config:/config
       - /path/to/data:/assets
     ports:
-      - 8080:8080
+      - "8080:8080"
     restart: unless-stopped

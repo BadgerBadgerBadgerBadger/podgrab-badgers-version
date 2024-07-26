@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -19,12 +18,12 @@ import (
 
 	"github.com/akhilrex/podgrab/db"
 	"github.com/akhilrex/podgrab/internal/sanitize"
-	stringy "github.com/gobeam/stringy"
+	"github.com/gobeam/stringy"
 )
 
 func Download(link string, episodeTitle string, podcastName string, prefix string) (string, error) {
 	if link == "" {
-		return "", errors.New("Download path empty")
+		return "", errors.New("download path empty")
 	}
 	client := httpClient()
 
@@ -58,7 +57,7 @@ func Download(link string, episodeTitle string, podcastName string, prefix strin
 	}
 	defer resp.Body.Close()
 	_, erra := io.Copy(file, resp.Body)
-	//fmt.Println(size)
+	// fmt.Println(size)
 	defer file.Close()
 	if erra != nil {
 		Logger.Errorw("Error saving file"+link, err)
@@ -100,12 +99,12 @@ func CreateNfoFile(podcast *db.Podcast) error {
 		return err
 	}
 	toPersist := xml.Header + string(out)
-	return ioutil.WriteFile(finalPath, []byte(toPersist), 0644)
+	return os.WriteFile(finalPath, []byte(toPersist), 0644)
 }
 
 func DownloadPodcastCoverImage(link string, podcastName string) (string, error) {
 	if link == "" {
-		return "", errors.New("Download path empty")
+		return "", errors.New("download path empty")
 	}
 	client := httpClient()
 	req, err := getRequest(link)
@@ -136,7 +135,7 @@ func DownloadPodcastCoverImage(link string, podcastName string) (string, error) 
 	}
 	defer resp.Body.Close()
 	_, erra := io.Copy(file, resp.Body)
-	//fmt.Println(size)
+	// fmt.Println(size)
 	defer file.Close()
 	if erra != nil {
 		Logger.Errorw("Error saving file"+link, err)
@@ -148,7 +147,7 @@ func DownloadPodcastCoverImage(link string, podcastName string) (string, error) 
 
 func DownloadImage(link string, episodeId string, podcastName string) (string, error) {
 	if link == "" {
-		return "", errors.New("Download path empty")
+		return "", errors.New("download path empty")
 	}
 	client := httpClient()
 	req, err := getRequest(link)
@@ -180,7 +179,7 @@ func DownloadImage(link string, episodeId string, podcastName string) (string, e
 	}
 	defer resp.Body.Close()
 	_, erra := io.Copy(file, resp.Body)
-	//fmt.Println(size)
+	// fmt.Println(size)
 	defer file.Close()
 	if erra != nil {
 		Logger.Errorw("Error saving file"+link, err)
@@ -261,7 +260,7 @@ func GetFileSizeFromUrl(url string) (int64, error) {
 	// Is our request ok?
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("Did not receive 200")
+		return 0, fmt.Errorf("did not receive 200")
 	}
 
 	size, err := strconv.Atoi(resp.Header.Get("Content-Length"))
@@ -280,14 +279,14 @@ func CreateBackup() (string, error) {
 	tarballFilePath := path.Join(folder, backupFileName)
 	file, err := os.Create(tarballFilePath)
 	if err != nil {
-		return "", errors.New(fmt.Sprintf("Could not create tarball file '%s', got error '%s'", tarballFilePath, err.Error()))
+		return "", fmt.Errorf("could not create tarball file '%s', got error '%s'", tarballFilePath, err.Error())
 	}
 	defer file.Close()
 
 	dbPath := path.Join(configPath, "podgrab.db")
 	_, err = os.Stat(dbPath)
 	if err != nil {
-		return "", errors.New(fmt.Sprintf("Could not find db file '%s', got error '%s'", dbPath, err.Error()))
+		return "", fmt.Errorf("could not find db file '%s', got error '%s'", dbPath, err.Error())
 	}
 	gzipWriter := gzip.NewWriter(file)
 	defer gzipWriter.Close()
@@ -305,13 +304,13 @@ func CreateBackup() (string, error) {
 func addFileToTarWriter(filePath string, tarWriter *tar.Writer) error {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Could not open file '%s', got error '%s'", filePath, err.Error()))
+		return fmt.Errorf("could not open file '%s', got error '%s'", filePath, err.Error())
 	}
 	defer file.Close()
 
 	stat, err := file.Stat()
 	if err != nil {
-		return errors.New(fmt.Sprintf("Could not get stat for file '%s', got error '%s'", filePath, err.Error()))
+		return fmt.Errorf("could not get stat for file '%s', got error '%s'", filePath, err.Error())
 	}
 
 	header := &tar.Header{
@@ -323,12 +322,12 @@ func addFileToTarWriter(filePath string, tarWriter *tar.Writer) error {
 
 	err = tarWriter.WriteHeader(header)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Could not write header for file '%s', got error '%s'", filePath, err.Error()))
+		return fmt.Errorf("could not write header for file '%s', got error '%s'", filePath, err.Error())
 	}
 
 	_, err = io.Copy(tarWriter, file)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Could not copy the file '%s' data to the tarball, got error '%s'", filePath, err.Error()))
+		return fmt.Errorf("could not copy the file '%s' data to the tarball, got error '%s'", filePath, err.Error())
 	}
 
 	return nil
@@ -360,7 +359,7 @@ func getRequest(url string) (*http.Request, error) {
 
 func createFolder(folder string, parent string) string {
 	folder = cleanFileName(folder)
-	//str := stringy.New(folder)
+	// str := stringy.New(folder)
 	folderPath := path.Join(parent, folder)
 	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
 		os.MkdirAll(folderPath, 0777)
@@ -392,7 +391,7 @@ func getFileName(link string, title string, defaultExtension string) string {
 	if len(ext) == 0 {
 		ext = defaultExtension
 	}
-	//str := stringy.New(title)
+	// str := stringy.New(title)
 	str := stringy.New(cleanFileName(title))
 	return str.KebabCase().Get() + ext
 

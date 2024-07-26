@@ -2,7 +2,8 @@ package model
 
 import "encoding/xml"
 
-//PodcastData is
+// RssPodcastData is the struct that represents the RSS feed of a podcast.
+// It is used to unmarshal the RSS feed of a podcast.
 type RssPodcastData struct {
 	XMLName    xml.Name   `xml:"rss"`
 	Text       string     `xml:",chardata"`
