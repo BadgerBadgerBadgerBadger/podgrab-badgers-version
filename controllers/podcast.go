@@ -159,17 +159,6 @@ func DeletePodcastEpisodesById(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 	}
 }
-func DeletePodcasDeleteOnlyPodcasttEpisodesById(c *gin.Context) {
-	var searchByIdQuery SearchByIdQuery
-
-	if c.ShouldBindUri(&searchByIdQuery) == nil {
-
-		service.DeletePodcastEpisodes(searchByIdQuery.Id)
-		c.JSON(http.StatusNoContent, gin.H{})
-	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-	}
-}
 
 func GetPodcastItemsByPodcastId(c *gin.Context) {
 	var searchByIdQuery SearchByIdQuery

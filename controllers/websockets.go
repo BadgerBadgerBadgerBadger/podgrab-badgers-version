@@ -8,6 +8,13 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	websocketMessageRegisterPlayer = "RegisterPlayer"
+	websocketMessagePlayerRemoved  = "PlayerRemoved"
+	websocketMessageEnqueue        = "Enqueue"
+	websocketMessageRegister       = "Register"
+)
+
 type EnqueuePayload struct {
 	ItemIds   []string `json:"itemIds"`
 	PodcastId string   `json:"podcastId"`
@@ -31,10 +38,10 @@ type Message struct {
 	Connection  *websocket.Conn `json:"-"`
 }
 
-func Wshandler(w http.ResponseWriter, r *http.Request) {
+func WSHandler(w http.ResponseWriter, r *http.Request) {
 	conn, err := wsupgrader.Upgrade(w, r, nil)
 	if err != nil {
-		fmt.Println("Failed to set websocket upgrade: %+v", err)
+		fmt.Printf("Failed to set websocket upgrade: %+v", err)
 		return
 	}
 	defer conn.Close()
@@ -43,7 +50,7 @@ func Wshandler(w http.ResponseWriter, r *http.Request) {
 		err := conn.ReadJSON(&mess)
 		if err != nil {
 			//	fmt.Println("Socket Error")
-			//fmt.Println(err.Error())
+			// fmt.Println(err.Error())
 			isPlayer := activePlayers[conn] != ""
 			if isPlayer {
 				delete(activePlayers, conn)
@@ -66,27 +73,26 @@ func HandleWebsocketMessages() {
 	for {
 		// Grab the next message from the broadcast channel
 		msg := <-broadcast
-		//fmt.Println(msg)
 
 		switch msg.MessageType {
-		case "RegisterPlayer":
+		case websocketMessageRegisterPlayer:
 			activePlayers[msg.Connection] = msg.Identifier
-			for connection, _ := range allConnections {
+			for connection := range allConnections {
 				connection.WriteJSON(Message{
 					Identifier:  msg.Identifier,
 					MessageType: "PlayerExists",
 				})
 			}
 			fmt.Println("Player Registered")
-		case "PlayerRemoved":
-			for connection, _ := range allConnections {
+		case websocketMessagePlayerRemoved:
+			for connection := range allConnections {
 				connection.WriteJSON(Message{
 					Identifier:  msg.Identifier,
 					MessageType: "NoPlayer",
 				})
 			}
 			fmt.Println("Player Registered")
-		case "Enqueue":
+		case websocketMessageEnqueue:
 			var payload EnqueuePayload
 			fmt.Println(msg.Payload)
 			err := json.Unmarshal([]byte(msg.Payload), &payload)
@@ -113,7 +119,7 @@ func HandleWebsocketMessages() {
 			} else {
 				fmt.Println(err.Error())
 			}
-		case "Register":
+		case websocketMessageRegister:
 			var player *websocket.Conn
 			for connection, id := range activePlayers {
 
@@ -136,14 +142,5 @@ func HandleWebsocketMessages() {
 				})
 			}
 		}
-		// Send it out to every client that is currently connected
-		// for client := range clients {
-		// 	err := client.WriteJSON(msg)
-		// 	if err != nil {
-		// 		log.Printf("error: %v", err)
-		// 		client.Close()
-		// 		delete(clients, client)
-		// 	}
-		// }
 	}
 }

@@ -49,7 +49,7 @@ func AddPage(c *gin.Context) {
 	c.HTML(http.StatusOK, "addPodcast.html", gin.H{"title": "Add Podcast", "setting": setting, "searchOptions": searchOptions})
 }
 func HomePage(c *gin.Context) {
-	//var podcasts []db.Podcast
+	// var podcasts []db.Podcast
 	podcasts := service.GetAllPodcasts("")
 	setting := c.MustGet("setting").(*db.Setting)
 	c.HTML(http.StatusOK, "index.html", gin.H{"title": "Podgrab", "podcasts": podcasts, "setting": setting})
@@ -112,7 +112,9 @@ func PodcastPage(c *gin.Context) {
 }
 
 func getItemsToPlay(itemIds []string, podcastId string, tagIds []string) []db.PodcastItem {
+
 	var items []db.PodcastItem
+
 	if len(itemIds) > 0 {
 		toAdd, _ := service.GetAllPodcastItemsByIds(itemIds)
 		items = *toAdd
@@ -121,15 +123,17 @@ func getItemsToPlay(itemIds []string, podcastId string, tagIds []string) []db.Po
 		pod := service.GetPodcastById(podcastId)
 		items = pod.PodcastItems
 	} else if len(tagIds) != 0 {
+
 		tags := service.GetTagsByIds(tagIds)
-		var tagNames []string
+
 		var podIds []string
+
 		for _, tag := range *tags {
-			tagNames = append(tagNames, tag.Label)
 			for _, pod := range tag.Podcasts {
 				podIds = append(podIds, pod.ID)
 			}
 		}
+
 		items = *service.GetAllPodcastItemsByPodcastIds(podIds)
 	}
 	return items
@@ -276,7 +280,7 @@ func AllTagsPage(c *gin.Context) {
 
 	var tags []db.Tag
 	var totalCount int64
-	//fmt.Printf("%+v\n", filter)
+	// fmt.Printf("%+v\n", filter)
 
 	if err := db.GetPaginatedTags(page, count,
 		&tags, &totalCount); err == nil {
@@ -347,45 +351,22 @@ func GetOmpl(c *gin.Context) {
 }
 func UploadOpml(c *gin.Context) {
 	file, _, err := c.Request.FormFile("file")
-	defer file.Close()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request"})
 		return
 	}
+	defer file.Close()
 
 	buf := bytes.NewBuffer(nil)
 	if _, err := io.Copy(buf, file); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request"})
 		return
 	}
-	content := string(buf.Bytes())
+	content := buf.String()
 	err = service.AddOpml(content)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 	} else {
 		c.JSON(200, gin.H{"success": "File uploaded"})
 	}
-}
-
-func AddNewPodcast(c *gin.Context) {
-	var addPodcastData AddPodcastData
-	err := c.ShouldBind(&addPodcastData)
-
-	if err == nil {
-
-		_, err = service.AddPodcast(addPodcastData.Url)
-		if err == nil {
-			go service.RefreshEpisodes()
-			c.Redirect(http.StatusFound, "/")
-
-		} else {
-
-			c.JSON(http.StatusBadRequest, err)
-
-		}
-	} else {
-		//	fmt.Println(err.Error())
-		c.JSON(http.StatusBadRequest, err)
-	}
-
 }

@@ -7,7 +7,7 @@ type PodcastAlreadyExistsError struct {
 }
 
 func (e *PodcastAlreadyExistsError) Error() string {
-	return fmt.Sprintf("Podcast with this url already exists")
+	return "Podcast with this url already exists"
 }
 
 type TagAlreadyExistsError struct {

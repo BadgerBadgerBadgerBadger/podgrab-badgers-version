@@ -60,7 +60,7 @@ func main() {
 		},
 		"naturalDate": func(raw time.Time) string {
 			return service.NatualTime(time.Now(), raw)
-			//return raw.Format("Jan 2 2006")
+			// return raw.Format("Jan 2 2006")
 		},
 		"latestEpisodeDate": func(podcastItems []db.PodcastItem) string {
 			var latest time.Time
@@ -129,7 +129,7 @@ func main() {
 	}
 	tmpl := template.Must(template.New("main").Funcs(funcMap).ParseGlob("client/*"))
 
-	//r.LoadHTMLGlob("client/*")
+	// r.LoadHTMLGlob("client/*")
 	r.SetHTMLTemplate(tmpl)
 
 	pass := os.Getenv("PASSWORD")
@@ -196,7 +196,7 @@ func main() {
 	router.GET("/rss", controllers.GetRss)
 
 	r.GET("/ws", func(c *gin.Context) {
-		controllers.Wshandler(c.Writer, c.Request)
+		controllers.WSHandler(c.Writer, c.Request)
 	})
 	go controllers.HandleWebsocketMessages()
 
@@ -224,7 +224,7 @@ func intiCron() {
 		log.Print(err)
 	}
 	service.UnlockMissedJobs()
-	//gocron.Every(uint64(checkFrequency)).Minutes().Do(service.DownloadMissingEpisodes)
+	// gocron.Every(uint64(checkFrequency)).Minutes().Do(service.DownloadMissingEpisodes)
 	gocron.Every(uint64(checkFrequency)).Minutes().Do(service.RefreshEpisodes)
 	gocron.Every(uint64(checkFrequency)).Minutes().Do(service.CheckMissingFiles)
 	gocron.Every(uint64(checkFrequency) * 2).Minutes().Do(service.UnlockMissedJobs)
