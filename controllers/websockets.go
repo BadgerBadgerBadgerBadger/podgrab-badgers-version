@@ -13,6 +13,9 @@ const (
 	websocketMessagePlayerRemoved  = "PlayerRemoved"
 	websocketMessageEnqueue        = "Enqueue"
 	websocketMessageRegister       = "Register"
+	websocketMessageNoPlayer       = "NoPlayer"
+	websocketMessagePlayerExists   = "PlayerExists"
+	websocketMessageError          = "Error"
 )
 
 type EnqueuePayload struct {
@@ -80,7 +83,7 @@ func HandleWebsocketMessages() {
 			for connection := range allConnections {
 				connection.WriteJSON(Message{
 					Identifier:  msg.Identifier,
-					MessageType: "PlayerExists",
+					MessageType: websocketMessagePlayerExists,
 				})
 			}
 			fmt.Println("Player Registered")
@@ -88,7 +91,7 @@ func HandleWebsocketMessages() {
 			for connection := range allConnections {
 				connection.WriteJSON(Message{
 					Identifier:  msg.Identifier,
-					MessageType: "NoPlayer",
+					MessageType: websocketMessageNoPlayer,
 				})
 			}
 			fmt.Println("Player Registered")
@@ -97,7 +100,18 @@ func HandleWebsocketMessages() {
 			fmt.Println(msg.Payload)
 			err := json.Unmarshal([]byte(msg.Payload), &payload)
 			if err == nil {
-				items := getItemsToPlay(payload.ItemIds, payload.PodcastId, payload.TagIds)
+
+				items, err := getItemsToPlay(payload.ItemIds, payload.PodcastId, payload.TagIds)
+				if err != nil {
+					for connection := range allConnections {
+						connection.WriteJSON(Message{
+							Identifier:  msg.Identifier,
+							MessageType: websocketMessageError,
+						})
+					}
+					break
+				}
+
 				var player *websocket.Conn
 				for connection, id := range activePlayers {
 
@@ -111,7 +125,7 @@ func HandleWebsocketMessages() {
 					if err == nil {
 						player.WriteJSON(Message{
 							Identifier:  msg.Identifier,
-							MessageType: "Enqueue",
+							MessageType: websocketMessageEnqueue,
 							Payload:     string(payloadStr),
 						})
 					}
@@ -130,15 +144,14 @@ func HandleWebsocketMessages() {
 			}
 
 			if player == nil {
-				fmt.Println("Player Not Exists")
 				msg.Connection.WriteJSON(Message{
 					Identifier:  msg.Identifier,
-					MessageType: "NoPlayer",
+					MessageType: websocketMessageNoPlayer,
 				})
 			} else {
 				msg.Connection.WriteJSON(Message{
 					Identifier:  msg.Identifier,
-					MessageType: "PlayerExists",
+					MessageType: websocketMessagePlayerExists,
 				})
 			}
 		}

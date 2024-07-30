@@ -1,8 +1,8 @@
 package controllers
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -62,23 +62,33 @@ type AddTagData struct {
 func GetAllPodcasts(c *gin.Context) {
 	var podcastListQuery PodcastListQuery
 
-	if c.ShouldBindQuery(&podcastListQuery) == nil {
-		var order = strings.ToLower(podcastListQuery.Order)
-		var sorting = "created_at"
-		switch sort := strings.ToLower(podcastListQuery.Sort); sort {
-		case DateAdded:
-			sorting = "created_at"
-		case Name:
-			sorting = "title"
-		case LastEpisode:
-			sorting = "last_episode"
-		}
-		if order == Desc {
-			sorting = fmt.Sprintf("%s desc", sorting)
-		}
-
-		c.JSON(200, service.GetAllPodcasts(sorting))
+	err := c.ShouldBindQuery(&podcastListQuery)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "err": err})
+		return
 	}
+
+	var order = strings.ToLower(podcastListQuery.Order)
+	var sorting = "created_at"
+	switch sort := strings.ToLower(podcastListQuery.Sort); sort {
+	case DateAdded:
+		sorting = "created_at"
+	case Name:
+		sorting = "title"
+	case LastEpisode:
+		sorting = "last_episode"
+	}
+	if order == Desc {
+		sorting = fmt.Sprintf("%s desc", sorting)
+	}
+
+	podcasts, err := service.GetAllPodcasts(sorting)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get podcasts.", "err": err})
+		return
+	}
+
+	c.JSON(200, podcasts)
 }
 
 func GetPodcastById(c *gin.Context) {
@@ -125,87 +135,128 @@ func UnpausePodcastById(c *gin.Context) {
 }
 
 func DeletePodcastById(c *gin.Context) {
+
 	var searchByIdQuery SearchByIdQuery
 
-	if c.ShouldBindUri(&searchByIdQuery) == nil {
+	err := c.ShouldBindUri(&searchByIdQuery)
 
-		service.DeletePodcast(searchByIdQuery.Id, true)
-		c.JSON(http.StatusNoContent, gin.H{})
-	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "err": err})
+		return
 	}
+
+	err = service.DeletePodcast(searchByIdQuery.Id, true)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete podcast.", "err": err})
+		return
+	}
+
+	c.JSON(http.StatusNoContent, gin.H{})
 }
 
 func DeleteOnlyPodcastById(c *gin.Context) {
+
 	var searchByIdQuery SearchByIdQuery
 
-	if c.ShouldBindUri(&searchByIdQuery) == nil {
+	err := c.ShouldBindUri(&searchByIdQuery)
 
-		service.DeletePodcast(searchByIdQuery.Id, false)
-		c.JSON(http.StatusNoContent, gin.H{})
-	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "err": err})
+		return
 	}
+
+	err = service.DeletePodcast(searchByIdQuery.Id, false)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete podcast.", "err": err})
+		return
+	}
+
+	c.JSON(http.StatusNoContent, gin.H{})
 }
 
 func DeletePodcastEpisodesById(c *gin.Context) {
+
 	var searchByIdQuery SearchByIdQuery
 
-	if c.ShouldBindUri(&searchByIdQuery) == nil {
-
-		service.DeletePodcastEpisodes(searchByIdQuery.Id)
-		c.JSON(http.StatusNoContent, gin.H{})
-	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+	err := c.ShouldBindUri(&searchByIdQuery)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "err": err})
+		return
 	}
+
+	err = service.DeletePodcastEpisodes(searchByIdQuery.Id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete podcast episodes.", "err": err})
+		return
+	}
+
+	c.JSON(http.StatusNoContent, gin.H{})
 }
 
 func GetPodcastItemsByPodcastId(c *gin.Context) {
 	var searchByIdQuery SearchByIdQuery
 
-	if c.ShouldBindUri(&searchByIdQuery) == nil {
-
-		var podcastItems []db.PodcastItem
-
-		err := db.GetAllPodcastItemsByPodcastId(searchByIdQuery.Id, &podcastItems)
-		fmt.Println(err)
-		c.JSON(200, podcastItems)
-	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+	err := c.ShouldBindUri(&searchByIdQuery)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "err": err})
+		return
 	}
+
+	var podcastItems []db.PodcastItem
+
+	err = db.GetAllPodcastItemsByPodcastId(searchByIdQuery.Id, &podcastItems)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get podcast items.", "err": err})
+		return
+	}
+
+	c.JSON(200, podcastItems)
 }
 
 func DownloadAllEpisodesByPodcastId(c *gin.Context) {
+
 	var searchByIdQuery SearchByIdQuery
 
-	if c.ShouldBindUri(&searchByIdQuery) == nil {
-
-		err := service.SetAllEpisodesToDownload(searchByIdQuery.Id)
-		fmt.Println(err)
-		go service.RefreshEpisodes()
-		c.JSON(200, gin.H{})
-	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+	err := c.ShouldBindUri(&searchByIdQuery)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "err": err})
+		return
 	}
+
+	err = service.SetAllEpisodesToDownload(searchByIdQuery.Id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set all episodes to download.", "err": err})
+		return
+	}
+
+	go service.RefreshEpisodes()
+	c.JSON(200, gin.H{})
 }
 
 func GetAllPodcastItems(c *gin.Context) {
+
 	var filter model.EpisodesFilter
+
 	err := c.ShouldBindQuery(&filter)
 	if err != nil {
-		fmt.Println(err.Error())
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "err": err})
+		return
 	}
+
 	filter.VerifyPaginationValues()
-	if podcastItems, totalCount, err := db.GetPaginatedPodcastItemsNew(filter); err == nil {
-		filter.SetCounts(totalCount)
-		toReturn := gin.H{
-			"podcastItems": podcastItems,
-			"filter":       &filter,
-		}
-		c.JSON(http.StatusOK, toReturn)
-	} else {
-		c.JSON(http.StatusBadRequest, err)
+
+	podcastItems, totalCount, err := db.GetPaginatedPodcastItemsNew(filter)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get podcast items.", "err": err})
+		return
 	}
+
+	filter.SetCounts(totalCount)
+	toReturn := gin.H{
+		"podcastItems": podcastItems,
+		"filter":       &filter,
+	}
+	c.JSON(http.StatusOK, toReturn)
 
 }
 
@@ -253,7 +304,13 @@ func GetPodcastImageById(c *gin.Context) {
 
 		err := db.GetPodcastById(searchByIdQuery.Id, &podcast)
 		if err == nil {
-			localPath := service.GetPodcastLocalImagePath(podcast.Image, podcast.Title)
+
+			localPath, err := service.GetPodcastLocalImagePath(podcast.Image, podcast.Title)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal error", "err": err})
+				return
+			}
+
 			if _, err = os.Stat(localPath); os.IsNotExist(err) {
 				c.Redirect(302, podcast.Image)
 			} else {
@@ -389,25 +446,28 @@ func DeletePodcastItem(c *gin.Context) {
 }
 
 func AddPodcast(c *gin.Context) {
+
 	var addPodcastData AddPodcastData
 	err := c.ShouldBindJSON(&addPodcastData)
-	if err == nil {
-		pod, err := service.AddPodcast(addPodcastData.Url)
-		if err == nil {
-			go service.RefreshEpisodes()
-			c.JSON(200, pod)
-		} else {
-			if v, ok := err.(*model.PodcastAlreadyExistsError); ok {
-				c.JSON(409, gin.H{"message": v.Error()})
-			} else {
-				log.Println(err.Error())
-				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
-			}
-		}
-	} else {
-		log.Println(err.Error())
-		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request.", "err": err})
+		return
 	}
+
+	pod, err := service.AddPodcast(addPodcastData.Url)
+	if err != nil {
+
+		var podcastAlreadyExistsErr *model.PodcastAlreadyExistsError
+		if errors.As(err, &podcastAlreadyExistsErr) {
+			c.JSON(409, gin.H{"message": "Podcast already exists.", "err": err})
+			return
+		}
+
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Internal error.", "err": err})
+	}
+
+	go service.RefreshEpisodes()
+	c.JSON(200, pod)
 }
 
 func GetAllTags(c *gin.Context) {
@@ -496,47 +556,75 @@ func createRss(items []db.PodcastItem, title, description, image string, c *gin.
 }
 
 func GetRssForPodcastById(c *gin.Context) {
+
 	var searchByIdQuery SearchByIdQuery
-	if c.ShouldBindUri(&searchByIdQuery) == nil {
-		var podcast db.Podcast
-		err := db.GetPodcastById(searchByIdQuery.Id, &podcast)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-		}
-		var podIds []string
-		podIds = append(podIds, searchByIdQuery.Id)
-		items := *service.GetAllPodcastItemsByPodcastIds(podIds)
 
-		description := podcast.Summary
-		title := podcast.Title
-
-		if err == nil {
-			c.XML(200, createRss(items, title, description, podcast.Image, c))
-		}
-	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+	err := c.ShouldBindUri(&searchByIdQuery)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request", "err": err})
+		return
 	}
+
+	var podcast db.Podcast
+	err = db.GetPodcastById(searchByIdQuery.Id, &podcast)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get podcast.", "err": err})
+		return
+	}
+
+	items, err := service.GetAllPodcastItemsByPodcastIds([]string{searchByIdQuery.Id})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get podcast items.", "err": err})
+		return
+	}
+
+	description := podcast.Summary
+	title := podcast.Title
+
+	c.XML(200, createRss(*items, title, description, podcast.Image, c))
 }
+
 func GetRssForTagById(c *gin.Context) {
+
 	var searchByIdQuery SearchByIdQuery
-	if c.ShouldBindUri(&searchByIdQuery) == nil {
-		tag, err := db.GetTagById(searchByIdQuery.Id)
-		var podIds []string
-		for _, pod := range tag.Podcasts {
-			podIds = append(podIds, pod.ID)
-		}
-		items := *service.GetAllPodcastItemsByPodcastIds(podIds)
 
-		description := fmt.Sprintf("Playing episodes with tag : %s", tag.Label)
-		title := fmt.Sprintf(" %s | Podgrab", tag.Label)
-
-		if err == nil {
-			c.XML(200, createRss(items, title, description, "", c))
-		}
-	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+	err := c.ShouldBindUri(&searchByIdQuery)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request",
+			"err":   err,
+		})
+		return
 	}
+
+	tag, err := db.GetTagById(searchByIdQuery.Id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Failed to get tag.",
+			"err":   err,
+		})
+		return
+	}
+
+	var podIds []string
+	for _, pod := range tag.Podcasts {
+		podIds = append(podIds, pod.ID)
+	}
+	items, err := service.GetAllPodcastItemsByPodcastIds(podIds)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Failed to get podcast items.",
+			"err":   err,
+		})
+		return
+	}
+
+	description := fmt.Sprintf("Playing episodes with tag : %s", tag.Label)
+	title := fmt.Sprintf(" %s | Podgrab", tag.Label)
+
+	c.XML(200, createRss(*items, title, description, "", c))
 }
+
 func GetRss(c *gin.Context) {
 	var items []db.PodcastItem
 
@@ -563,24 +651,28 @@ func DeleteTagById(c *gin.Context) {
 	}
 }
 func AddTag(c *gin.Context) {
+
 	var addTagData AddTagData
 	err := c.ShouldBindJSON(&addTagData)
-	if err == nil {
-		tag, err := service.AddTag(addTagData.Label, addTagData.Description)
-		if err == nil {
-			c.JSON(200, tag)
-		} else {
-			if v, ok := err.(*model.TagAlreadyExistsError); ok {
-				c.JSON(409, gin.H{"message": v.Error()})
-			} else {
-				log.Println(err.Error())
-				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
-			}
-		}
-	} else {
-		log.Println(err.Error())
-		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request", "err": err})
+		return
 	}
+
+	tag, err := service.AddTag(addTagData.Label, addTagData.Description)
+	if err != nil {
+
+		var tagAlreadyExistsErr *model.TagAlreadyExistsError
+		if errors.As(err, &tagAlreadyExistsErr) {
+			c.JSON(409, gin.H{"message": "Tag already exists.", "err": err})
+			return
+		}
+
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.JSON(200, tag)
 }
 
 func AddTagToPodcast(c *gin.Context) {
@@ -610,15 +702,15 @@ func RemoveTagFromPodcast(c *gin.Context) {
 }
 
 func UpdateSetting(c *gin.Context) {
-	var model SettingModel
-	err := c.ShouldBind(&model)
+	var settingModel SettingModel
+	err := c.ShouldBind(&settingModel)
 
 	if err == nil {
 
-		err = service.UpdateSettings(model.DownloadOnAdd, model.InitialDownloadCount,
-			model.AutoDownload, model.AppendDateToFileName, model.AppendEpisodeNumberToFileName,
-			model.DarkMode, model.DownloadEpisodeImages, model.GenerateNFOFile, model.DontDownloadDeletedFromDisk, model.BaseUrl,
-			model.MaxDownloadConcurrency, model.UserAgent,
+		err = service.UpdateSettings(settingModel.DownloadOnAdd, settingModel.InitialDownloadCount,
+			settingModel.AutoDownload, settingModel.AppendDateToFileName, settingModel.AppendEpisodeNumberToFileName,
+			settingModel.DarkMode, settingModel.DownloadEpisodeImages, settingModel.GenerateNFOFile, settingModel.DontDownloadDeletedFromDisk, settingModel.BaseUrl,
+			settingModel.MaxDownloadConcurrency, settingModel.UserAgent,
 		)
 		if err == nil {
 			c.JSON(200, gin.H{"message": "Success"})

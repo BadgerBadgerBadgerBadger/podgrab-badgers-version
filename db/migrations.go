@@ -25,6 +25,7 @@ func RunMigrations() {
 		ExecuteAndSaveMigration(mig.Name, mig.Query)
 	}
 }
+
 func ExecuteAndSaveMigration(name string, query string) error {
 	var migration Migration
 	result := DB.Where("name=?", name).First(&migration)

@@ -14,6 +14,7 @@ import (
 	"github.com/akhilrex/podgrab/model"
 	"github.com/akhilrex/podgrab/service"
 	"github.com/gin-gonic/gin"
+	pkgErrors "github.com/pkg/errors"
 )
 
 type SearchGPodderData struct {
@@ -48,12 +49,19 @@ func AddPage(c *gin.Context) {
 	setting := c.MustGet("setting").(*db.Setting)
 	c.HTML(http.StatusOK, "addPodcast.html", gin.H{"title": "Add Podcast", "setting": setting, "searchOptions": searchOptions})
 }
+
 func HomePage(c *gin.Context) {
-	// var podcasts []db.Podcast
-	podcasts := service.GetAllPodcasts("")
+
+	podcasts, err := service.GetAllPodcasts("")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Failed to get podcasts.", "err": err})
+		return
+	}
+
 	setting := c.MustGet("setting").(*db.Setting)
 	c.HTML(http.StatusOK, "index.html", gin.H{"title": "Podgrab", "podcasts": podcasts, "setting": setting})
 }
+
 func PodcastPage(c *gin.Context) {
 	var searchByIdQuery SearchByIdQuery
 	if c.ShouldBindUri(&searchByIdQuery) == nil {
@@ -111,20 +119,33 @@ func PodcastPage(c *gin.Context) {
 
 }
 
-func getItemsToPlay(itemIds []string, podcastId string, tagIds []string) []db.PodcastItem {
-
-	var items []db.PodcastItem
+func getItemsToPlay(itemIds []string, podcastId string, tagIds []string) ([]db.PodcastItem, error) {
 
 	if len(itemIds) > 0 {
-		toAdd, _ := service.GetAllPodcastItemsByIds(itemIds)
-		items = *toAdd
 
-	} else if podcastId != "" {
-		pod := service.GetPodcastById(podcastId)
-		items = pod.PodcastItems
-	} else if len(tagIds) != 0 {
+		toAdd, err := service.GetAllPodcastItemsByIds(itemIds)
+		if err != nil {
+			return nil, pkgErrors.Wrap(err, "failed to get podcast items")
+		}
 
-		tags := service.GetTagsByIds(tagIds)
+		return *toAdd, nil
+	}
+
+	if podcastId != "" {
+		pod, err := service.GetPodcastById(podcastId)
+		if err != nil {
+			return nil, pkgErrors.Wrap(err, "failed to get podcast")
+		}
+
+		return pod.PodcastItems, nil
+	}
+
+	if len(tagIds) != 0 {
+
+		tags, err := service.GetTagsByIds(tagIds)
+		if err != nil {
+			return nil, pkgErrors.Wrap(err, "failed to get tags")
+		}
 
 		var podIds []string
 
@@ -134,9 +155,15 @@ func getItemsToPlay(itemIds []string, podcastId string, tagIds []string) []db.Po
 			}
 		}
 
-		items = *service.GetAllPodcastItemsByPodcastIds(podIds)
+		items, err := service.GetAllPodcastItemsByPodcastIds(podIds)
+		if err != nil {
+			return nil, pkgErrors.Wrap(err, "failed to get podcast items")
+		}
+
+		return *items, nil
 	}
-	return items
+
+	return nil, nil
 }
 
 func PlayerPage(c *gin.Context) {
@@ -144,20 +171,41 @@ func PlayerPage(c *gin.Context) {
 	itemIds, hasItemIds := c.GetQueryArray("itemIds")
 	podcastId, hasPodcastId := c.GetQuery("podcastId")
 	tagIds, hasTagIds := c.GetQueryArray("tagIds")
+
 	title := "Podgrab"
+
 	var items []db.PodcastItem
 	var totalCount int64
+
 	if hasItemIds {
-		toAdd, _ := service.GetAllPodcastItemsByIds(itemIds)
+
+		toAdd, err := service.GetAllPodcastItemsByIds(itemIds)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to get podcast items", "err": err})
+		}
+
 		items = *toAdd
 		totalCount = int64(len(items))
+
 	} else if hasPodcastId {
-		pod := service.GetPodcastById(podcastId)
+		pod, err := service.GetPodcastById(podcastId)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to get podcast", "err": err})
+			return
+		}
+
 		items = pod.PodcastItems
 		title = "Playing: " + pod.Title
 		totalCount = int64(len(items))
+
 	} else if hasTagIds {
-		tags := service.GetTagsByIds(tagIds)
+
+		tags, err := service.GetTagsByIds(tagIds)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to get tags", "err": err})
+			return
+		}
+
 		var tagNames []string
 		var podIds []string
 		for _, tag := range *tags {
@@ -166,16 +214,25 @@ func PlayerPage(c *gin.Context) {
 				podIds = append(podIds, pod.ID)
 			}
 		}
-		items = *service.GetAllPodcastItemsByPodcastIds(podIds)
+
+		returned, err := service.GetAllPodcastItemsByPodcastIds(podIds)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to get podcast items", "err": err})
+			return
+		}
+
 		if len(tagNames) == 1 {
-			title = fmt.Sprintf("Playing episodes with tag : %s", (tagNames[0]))
+			title = fmt.Sprintf("Playing episodes with tag : %s", tagNames[0])
 		} else {
 			title = fmt.Sprintf("Playing episodes with tags : %s", strings.Join(tagNames, ", "))
 		}
+
+		items = *returned
 	} else {
 		title = "Playing Latest Episodes"
 		if err := db.GetPaginatedPodcastItems(1, 20, nil, nil, time.Time{}, &items, &totalCount); err != nil {
-			fmt.Println(err.Error())
+			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to get paginated podcast items", "err": err})
+			return
 		}
 	}
 	setting := c.MustGet("setting").(*db.Setting)
@@ -246,12 +303,29 @@ func getSortOptions() interface{} {
 	}
 }
 func AllEpisodesPage(c *gin.Context) {
+
 	var filter model.EpisodesFilter
-	c.ShouldBindQuery(&filter)
+	err := c.ShouldBindQuery(&filter)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "err": err})
+		return
+	}
+
 	filter.VerifyPaginationValues()
 	setting := c.MustGet("setting").(*db.Setting)
-	podcasts := service.GetAllPodcasts("")
-	tags, _ := db.GetAllTags("")
+
+	podcasts, err := service.GetAllPodcasts("")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get podcasts", "err": err})
+		return
+	}
+
+	tags, err := db.GetAllTags("")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get tags", "err": err})
+		return
+	}
+
 	toReturn := gin.H{
 		"title":        "All Episodes",
 		"podcastItems": []db.PodcastItem{},
@@ -264,13 +338,19 @@ func AllEpisodesPage(c *gin.Context) {
 		"sortOptions":  getSortOptions(),
 	}
 	c.HTML(http.StatusOK, "episodes_new.html", toReturn)
-
 }
 
 func AllTagsPage(c *gin.Context) {
+
 	var pagination model.Pagination
 	var page, count int
-	c.ShouldBindQuery(&pagination)
+
+	err := c.ShouldBindQuery(&pagination)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "err": err})
+		return
+	}
+
 	if page = pagination.Page; page == 0 {
 		page = 1
 	}
@@ -280,61 +360,72 @@ func AllTagsPage(c *gin.Context) {
 
 	var tags []db.Tag
 	var totalCount int64
-	// fmt.Printf("%+v\n", filter)
 
-	if err := db.GetPaginatedTags(page, count,
-		&tags, &totalCount); err == nil {
-
-		setting := c.MustGet("setting").(*db.Setting)
-		totalPages := math.Ceil(float64(totalCount) / float64(count))
-		nextPage, previousPage := 0, 0
-		if float64(page) < totalPages {
-			nextPage = page + 1
-		}
-		if page > 1 {
-			previousPage = page - 1
-		}
-		toReturn := gin.H{
-			"title":        "Tags",
-			"tags":         tags,
-			"setting":      setting,
-			"page":         page,
-			"count":        count,
-			"totalCount":   totalCount,
-			"totalPages":   totalPages,
-			"nextPage":     nextPage,
-			"previousPage": previousPage,
-		}
-		c.HTML(http.StatusOK, "tags.html", toReturn)
-	} else {
+	err = db.GetPaginatedTags(page, count, &tags, &totalCount)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, err)
+		return
 	}
 
+	setting := c.MustGet("setting").(*db.Setting)
+	totalPages := math.Ceil(float64(totalCount) / float64(count))
+	nextPage, previousPage := 0, 0
+	if float64(page) < totalPages {
+		nextPage = page + 1
+	}
+	if page > 1 {
+		previousPage = page - 1
+	}
+	toReturn := gin.H{
+		"title":        "Tags",
+		"tags":         tags,
+		"setting":      setting,
+		"page":         page,
+		"count":        count,
+		"totalCount":   totalCount,
+		"totalPages":   totalPages,
+		"nextPage":     nextPage,
+		"previousPage": previousPage,
+	}
+	c.HTML(http.StatusOK, "tags.html", toReturn)
 }
 
 func Search(c *gin.Context) {
 	var searchQuery SearchGPodderData
-	if c.ShouldBindQuery(&searchQuery) == nil {
-		var searcher service.SearchService
-		var isValidSearchProvider bool
-		if searcher, isValidSearchProvider = searchProvider[searchQuery.SearchSource]; !isValidSearchProvider {
-			searcher = new(service.PodcastIndexService)
-		}
 
-		data := searcher.Query(searchQuery.Q)
-		allPodcasts := service.GetAllPodcasts("")
-
-		urls := make(map[string]string, len(*allPodcasts))
-		for _, pod := range *allPodcasts {
-			urls[pod.URL] = pod.ID
-		}
-		for _, pod := range data {
-			_, ok := urls[pod.URL]
-			pod.AlreadySaved = ok
-		}
-		c.JSON(200, data)
+	err := c.ShouldBindQuery(&searchQuery)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "err": err})
+		return
 	}
 
+	var searcher service.SearchService
+	var isValidSearchProvider bool
+	if searcher, isValidSearchProvider = searchProvider[searchQuery.SearchSource]; !isValidSearchProvider {
+		searcher = new(service.PodcastIndexService)
+	}
+
+	data, err := searcher.Query(searchQuery.Q)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request"})
+		return
+	}
+
+	allPodcasts, err := service.GetAllPodcasts("")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Failed to get podcasts", "err": err})
+		return
+	}
+
+	urls := make(map[string]string, len(*allPodcasts))
+	for _, pod := range *allPodcasts {
+		urls[pod.URL] = pod.ID
+	}
+	for _, pod := range data {
+		_, ok := urls[pod.URL]
+		pod.AlreadySaved = ok
+	}
+	c.JSON(200, data)
 }
 
 func GetOmpl(c *gin.Context) {

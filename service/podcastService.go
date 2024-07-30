@@ -46,35 +46,53 @@ func FetchURL(url string) (model.PodcastData, []byte, error) {
 	err = xml.Unmarshal(body, &response)
 	return response, body, err
 }
-func GetPodcastById(id string) *db.Podcast {
+func GetPodcastById(id string) (*db.Podcast, error) {
 	var podcast db.Podcast
 
-	db.GetPodcastById(id, &podcast)
+	err := db.GetPodcastById(id, &podcast)
+	if err != nil {
+		return nil, pkgErrors.Wrap(err, "failed to get podcast by id")
+	}
 
-	return &podcast
+	return &podcast, nil
 }
 
 func GetAllPodcastItemsByIds(podcastItemIds []string) (*[]db.PodcastItem, error) {
 	return db.GetAllPodcastItemsByIds(podcastItemIds)
 }
-func GetAllPodcastItemsByPodcastIds(podcastIds []string) *[]db.PodcastItem {
+func GetAllPodcastItemsByPodcastIds(podcastIds []string) (*[]db.PodcastItem, error) {
 	var podcastItems []db.PodcastItem
 
-	db.GetAllPodcastItemsByPodcastIds(podcastIds, &podcastItems)
-	return &podcastItems
+	err := db.GetAllPodcastItemsByPodcastIds(podcastIds, &podcastItems)
+	if err != nil {
+		return nil, pkgErrors.Wrap(err, "failed to get podcast items by podcast ids")
+	}
+
+	return &podcastItems, nil
 }
 
-func GetTagsByIds(ids []string) *[]db.Tag {
+func GetTagsByIds(ids []string) (*[]db.Tag, error) {
 
-	tags, _ := db.GetTagsByIds(ids)
+	tags, err := db.GetTagsByIds(ids)
+	if err != nil {
+		return nil, pkgErrors.Wrap(err, "failed to get tags by ids")
+	}
 
-	return tags
+	return tags, nil
 }
-func GetAllPodcasts(sorting string) *[]db.Podcast {
+func GetAllPodcasts(sorting string) (*[]db.Podcast, error) {
+
 	var podcasts []db.Podcast
-	db.GetAllPodcasts(&podcasts, sorting)
 
-	stats, _ := db.GetPodcastEpisodeStats()
+	err := db.GetAllPodcasts(&podcasts, sorting)
+	if err != nil {
+		return nil, pkgErrors.Wrap(err, "failed to get all podcasts")
+	}
+
+	stats, err := db.GetPodcastEpisodeStats()
+	if err != nil {
+		return nil, pkgErrors.Wrap(err, "failed to get podcast episode stats")
+	}
 
 	type Key struct {
 		PodcastID      string
@@ -99,17 +117,17 @@ func GetAllPodcasts(sorting string) *[]db.Podcast {
 
 		toReturn = append(toReturn, podcast)
 	}
-	return &toReturn
+	return &toReturn, nil
 }
 
 func AddOpml(content string) error {
-	model, err := ParseOpml(content)
+	opmlModel, err := ParseOpml(content)
 	if err != nil {
 		fmt.Println(err.Error())
 		return errors.New("invalid file format")
 	}
 	var wg sync.WaitGroup
-	for _, outline := range model.Body.Outline {
+	for _, outline := range opmlModel.Body.Outline {
 		if outline.XmlUrl != "" {
 			wg.Add(1)
 			go func(url string) {
@@ -137,7 +155,10 @@ func AddOpml(content string) error {
 
 func ExportOmpl(usePodgrabLink bool, baseUrl string) ([]byte, error) {
 
-	podcasts := GetAllPodcasts("")
+	podcasts, err := GetAllPodcasts("")
+	if err != nil {
+		return nil, pkgErrors.Wrap(err, "failed to get all podcasts")
+	}
 
 	var outlines []model.OpmlOutline
 	for _, podcast := range *podcasts {
@@ -255,6 +276,10 @@ func AddPodcastItems(podcast *db.Podcast, newPodcast bool) error {
 	}
 
 	existingItems, err := db.GetPodcastItemsByPodcastIdAndGUIDs(podcast.ID, allGuids)
+	if err != nil {
+		return pkgErrors.Wrap(err, "failed to get podcast items by podcast id and guids")
+	}
+
 	keyMap := make(map[string]int)
 
 	for _, item := range *existingItems {
@@ -338,12 +363,19 @@ func AddPodcastItems(podcast *db.Podcast, newPodcast bool) error {
 				Image:          obj.Image.Href,
 				DownloadStatus: downloadStatus,
 			}
-			db.CreatePodcastItem(&podcastItem)
+
+			err := db.CreatePodcastItem(&podcastItem)
+			if err != nil {
+				return pkgErrors.Wrap(err, "failed to create podcast item")
+			}
 			itemsAdded[podcastItem.ID] = podcastItem.FileURL
 		}
 	}
 	if (latestDate != time.Time{}) {
-		db.UpdateLastEpisodeDateForPodcast(podcast.ID, latestDate)
+		err := db.UpdateLastEpisodeDateForPodcast(podcast.ID, latestDate)
+		if err != nil {
+			return pkgErrors.Wrap(err, "failed to update last episode date for podcast")
+		}
 	}
 	return err
 }
@@ -503,6 +535,9 @@ func DownloadMissingEpisodes() error {
 	setting := db.GetOrCreateSetting()
 
 	data, err := db.GetAllPodcastItemsToBeDownloaded()
+	if err != nil {
+		return pkgErrors.Wrap(err, "failed to get all podcast items to be downloaded")
+	}
 
 	fmt.Println("Processing episodes: ", strconv.Itoa(len(*data)))
 	if err != nil {
@@ -709,14 +744,7 @@ func makeQuery(url string) ([]byte, error) {
 
 	return body, nil
 }
-func GetSearchFromGpodder(pod model.GPodcast) *model.CommonSearchResultModel {
-	p := new(model.CommonSearchResultModel)
-	p.URL = pod.URL
-	p.Image = pod.LogoURL
-	p.Title = pod.Title
-	p.Description = pod.Description
-	return p
-}
+
 func GetSearchFromItunes(pod model.ItunesSingleResult) *model.CommonSearchResultModel {
 	p := new(model.CommonSearchResultModel)
 	p.URL = pod.FeedURL

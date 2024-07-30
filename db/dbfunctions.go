@@ -262,8 +262,8 @@ func GetEpisodeNumber(podcastItemId, podcastId string) (int, error) {
 	from cte 
 	where id = ?
 	`, podcastId, podcastItemId).Row()
-	error := row.Scan(&id, &sequence)
-	return sequence, error
+	err := row.Scan(&id, &sequence)
+	return sequence, err
 }
 
 func ForceSetLastEpisodeDate(podcastId string) {
