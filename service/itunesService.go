@@ -3,28 +3,32 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/url"
 
 	"github.com/TheHippo/podcastindex"
 	"github.com/akhilrex/podgrab/model"
+	pkgErrors "github.com/pkg/errors"
 )
 
 type SearchService interface {
-	Query(q string) []*model.CommonSearchResultModel
+	Query(q string) ([]*model.CommonSearchResultModel, error)
 }
 
 type ItunesService struct {
 }
 
-const ITUNES_BASE = "https://itunes.apple.com"
+const ItunesBase = "https://itunes.apple.com"
 
-func (service ItunesService) Query(q string) []*model.CommonSearchResultModel {
-	url := fmt.Sprintf("%s/search?term=%s&entity=podcast", ITUNES_BASE, url.QueryEscape(q))
+func (service ItunesService) Query(q string) ([]*model.CommonSearchResultModel, error) {
+	u := fmt.Sprintf("%s/search?term=%s&entity=podcast", ItunesBase, url.QueryEscape(q))
 
-	body, _ := makeQuery(url)
+	body, _ := makeQuery(u)
 	var response model.ItunesResponse
-	json.Unmarshal(body, &response)
+
+	err := json.Unmarshal(body, &response)
+	if err != nil {
+		return nil, pkgErrors.Wrap(err, "failed to unmarshal itunes response")
+	}
 
 	var toReturn []*model.CommonSearchResultModel
 
@@ -32,30 +36,30 @@ func (service ItunesService) Query(q string) []*model.CommonSearchResultModel {
 		toReturn = append(toReturn, GetSearchFromItunes(obj))
 	}
 
-	return toReturn
+	return toReturn, nil
 }
 
 type PodcastIndexService struct {
 }
 
 const (
-	PODCASTINDEX_KEY    = "LNGTNUAFVL9W2AQKVZ49"
-	PODCASTINDEX_SECRET = "H8tq^CZWYmAywbnngTwB$rwQHwMSR8#fJb#Bhgb3"
+	PodcastIndexKey    = "LNGTNUAFVL9W2AQKVZ49"
+	PodcastIndexSecret = "H8tq^CZWYmAywbnngTwB$rwQHwMSR8#fJb#Bhgb3"
 )
 
-func (service PodcastIndexService) Query(q string) []*model.CommonSearchResultModel {
+func (service PodcastIndexService) Query(q string) ([]*model.CommonSearchResultModel, error) {
 
-	c := podcastindex.NewClient(PODCASTINDEX_KEY, PODCASTINDEX_SECRET)
+	c := podcastindex.NewClient(PodcastIndexKey, PodcastIndexSecret)
 	var toReturn []*model.CommonSearchResultModel
+
 	podcasts, err := c.Search(q)
 	if err != nil {
-		log.Fatal(err.Error())
-		return toReturn
+		return nil, pkgErrors.Wrap(err, "failed to search podcast index")
 	}
 
 	for _, obj := range podcasts {
 		toReturn = append(toReturn, GetSearchFromPodcastIndex(obj))
 	}
 
-	return toReturn
+	return toReturn, nil
 }

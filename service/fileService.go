@@ -19,34 +19,53 @@ import (
 	"github.com/akhilrex/podgrab/db"
 	"github.com/akhilrex/podgrab/internal/sanitize"
 	"github.com/gobeam/stringy"
+	pkgErrors "github.com/pkg/errors"
+)
+
+const (
+	fileExtensionMp3 = ".mp3"
+	fileExtensionJpg = ".jpg"
 )
 
 func Download(link string, episodeTitle string, podcastName string, prefix string) (string, error) {
+
 	if link == "" {
 		return "", errors.New("download path empty")
 	}
+
 	client := httpClient()
 
-	req, err := getRequest(link)
+	req, err := createGetRequest(link)
 	if err != nil {
-		Logger.Errorw("Error creating request: "+link, err)
+		return "", pkgErrors.Wrap(err, "failed to create request")
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		Logger.Errorw("Error getting response: "+link, err)
-		return "", err
+		return "", pkgErrors.Wrap(err, "failed to get response")
 	}
 
-	fileName := getFileName(link, episodeTitle, ".mp3")
+	fileName, err := generateFileName(link, episodeTitle, fileExtensionMp3)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to get file name")
+	}
+
 	if prefix != "" {
 		fileName = fmt.Sprintf("%s-%s", prefix, fileName)
 	}
-	folder := createDataFolderIfNotExists(podcastName)
+
+	folder, err := createDataFolderIfNotExists(podcastName)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to create data folder")
+	}
+
 	finalPath := path.Join(folder, fileName)
 
 	if _, err := os.Stat(finalPath); !os.IsNotExist(err) {
-		changeOwnership(finalPath)
+		err = changeOwnership(finalPath)
+		if err != nil {
+			return "", pkgErrors.Wrap(err, "failed to change ownership")
+		}
 		return finalPath, nil
 	}
 
@@ -56,29 +75,46 @@ func Download(link string, episodeTitle string, podcastName string, prefix strin
 		return "", err
 	}
 	defer resp.Body.Close()
-	_, erra := io.Copy(file, resp.Body)
-	// fmt.Println(size)
-	defer file.Close()
-	if erra != nil {
-		Logger.Errorw("Error saving file"+link, err)
-		return "", erra
+
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to save file")
 	}
-	changeOwnership(finalPath)
+	defer file.Close()
+
+	err = changeOwnership(finalPath)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to change ownership")
+	}
+
 	return finalPath, nil
 
 }
 
-func GetPodcastLocalImagePath(link string, podcastName string) string {
-	fileName := getFileName(link, "folder", ".jpg")
-	folder := createDataFolderIfNotExists(podcastName)
+func GetPodcastLocalImagePath(link string, podcastName string) (string, error) {
+
+	fileName, err := generateFileName(link, "folder", fileExtensionJpg)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to get file name")
+	}
+
+	folder, err := createDataFolderIfNotExists(podcastName)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to create data folder")
+	}
 
 	finalPath := path.Join(folder, fileName)
-	return finalPath
+	return finalPath, nil
 }
 
 func CreateNfoFile(podcast *db.Podcast) error {
+
 	fileName := "album.nfo"
-	folder := createDataFolderIfNotExists(podcast.Title)
+
+	folder, err := createDataFolderIfNotExists(podcast.Title)
+	if err != nil {
+		return pkgErrors.Wrap(err, "failed to create data folder")
+	}
 
 	finalPath := path.Join(folder, fileName)
 
@@ -107,7 +143,7 @@ func DownloadPodcastCoverImage(link string, podcastName string) (string, error) 
 		return "", errors.New("download path empty")
 	}
 	client := httpClient()
-	req, err := getRequest(link)
+	req, err := createGetRequest(link)
 	if err != nil {
 		Logger.Errorw("Error creating request: "+link, err)
 		return "", err
@@ -115,33 +151,45 @@ func DownloadPodcastCoverImage(link string, podcastName string) (string, error) 
 
 	resp, err := client.Do(req)
 	if err != nil {
-		Logger.Errorw("Error getting response: "+link, err)
-		return "", err
+		return "", pkgErrors.Wrap(err, "failed to get response: "+link)
+	}
+	defer resp.Body.Close()
+
+	fileName, err := generateFileName(link, "folder", fileExtensionJpg)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to get file name")
 	}
 
-	fileName := getFileName(link, "folder", ".jpg")
-	folder := createDataFolderIfNotExists(podcastName)
+	folder, err := createDataFolderIfNotExists(podcastName)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to create data folder")
+	}
 
 	finalPath := path.Join(folder, fileName)
 	if _, err := os.Stat(finalPath); !os.IsNotExist(err) {
-		changeOwnership(finalPath)
+		err = changeOwnership(finalPath)
+		if err != nil {
+			return "", pkgErrors.Wrap(err, "failed to change ownership")
+		}
 		return finalPath, nil
 	}
 
 	file, err := os.Create(finalPath)
 	if err != nil {
-		Logger.Errorw("Error creating file"+link, err)
-		return "", err
+		return "", pkgErrors.Wrap(err, "failed to create file")
 	}
-	defer resp.Body.Close()
-	_, erra := io.Copy(file, resp.Body)
-	// fmt.Println(size)
 	defer file.Close()
-	if erra != nil {
-		Logger.Errorw("Error saving file"+link, err)
-		return "", erra
+
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to save file")
 	}
-	changeOwnership(finalPath)
+
+	err = changeOwnership(finalPath)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to change ownership")
+	}
+
 	return finalPath, nil
 }
 
@@ -150,7 +198,7 @@ func DownloadImage(link string, episodeId string, podcastName string) (string, e
 		return "", errors.New("download path empty")
 	}
 	client := httpClient()
-	req, err := getRequest(link)
+	req, err := createGetRequest(link)
 	if err != nil {
 		Logger.Errorw("Error creating request: "+link, err)
 		return "", err
@@ -161,14 +209,30 @@ func DownloadImage(link string, episodeId string, podcastName string) (string, e
 		Logger.Errorw("Error getting response: "+link, err)
 		return "", err
 	}
+	defer resp.Body.Close()
 
-	fileName := getFileName(link, episodeId, ".jpg")
-	folder := createDataFolderIfNotExists(podcastName)
-	imageFolder := createFolder("images", folder)
+	fileName, err := generateFileName(link, episodeId, fileExtensionJpg)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to get file name: "+link)
+	}
+
+	folder, err := createDataFolderIfNotExists(podcastName)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to create data folder")
+	}
+
+	imageFolder, err := createFolder("images", folder)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to create image folder")
+	}
+
 	finalPath := path.Join(imageFolder, fileName)
 
 	if _, err := os.Stat(finalPath); !os.IsNotExist(err) {
-		changeOwnership(finalPath)
+		err = changeOwnership(finalPath)
+		if err != nil {
+			return "", pkgErrors.Wrap(err, "failed to change ownership")
+		}
 		return finalPath, nil
 	}
 
@@ -177,28 +241,42 @@ func DownloadImage(link string, episodeId string, podcastName string) (string, e
 		Logger.Errorw("Error creating file"+link, err)
 		return "", err
 	}
-	defer resp.Body.Close()
-	_, erra := io.Copy(file, resp.Body)
-	// fmt.Println(size)
 	defer file.Close()
-	if erra != nil {
+
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
 		Logger.Errorw("Error saving file"+link, err)
-		return "", erra
+		return "", err
 	}
-	changeOwnership(finalPath)
+
+	err = changeOwnership(finalPath)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to change ownership")
+	}
+
 	return finalPath, nil
 
 }
-func changeOwnership(path string) {
+func changeOwnership(path string) error {
+
 	uid, err1 := strconv.Atoi(os.Getenv("PUID"))
-	gid, err2 := strconv.Atoi(os.Getenv("PGID"))
-	fmt.Println(path)
-	if err1 == nil && err2 == nil {
-		fmt.Println(path + " : Attempting change")
-		os.Chown(path, uid, gid)
+	if err1 != nil {
+		return pkgErrors.Wrap(err1, "failed to get PUID")
 	}
 
+	gid, err2 := strconv.Atoi(os.Getenv("PGID"))
+	if err2 != nil {
+		return pkgErrors.Wrap(err2, "failed to get PGID")
+	}
+
+	err := os.Chown(path, uid, gid)
+	if err != nil {
+		return pkgErrors.Wrap(err, "failed to change ownership")
+	}
+
+	return nil
 }
+
 func DeleteFile(filePath string) error {
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return err
@@ -215,9 +293,15 @@ func FileExists(filePath string) bool {
 }
 
 func GetAllBackupFiles() ([]string, error) {
+
 	var files []string
-	folder := createConfigFolderIfNotExists("backups")
-	err := filepath.Walk(folder, func(path string, info os.FileInfo, err error) error {
+
+	folder, err := createConfigFolderIfNotExists("backups")
+	if err != nil {
+		return nil, pkgErrors.Wrap(err, "failed to create backup")
+	}
+
+	err = filepath.Walk(folder, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() {
 			files = append(files, path)
 		}
@@ -235,20 +319,25 @@ func GetFileSize(path string) (int64, error) {
 	return info.Size(), nil
 }
 
-func deleteOldBackup() {
+func deleteOldBackup() error {
 	files, err := GetAllBackupFiles()
 	if err != nil {
-		return
+		return pkgErrors.Wrap(err, "failed to get backup files")
 	}
+
 	if len(files) <= 5 {
-		return
+		return nil
 	}
 
 	toDelete := files[5:]
 	for _, file := range toDelete {
-		fmt.Println(file)
-		DeleteFile(file)
+		err := DeleteFile(file)
+		if err != nil {
+			return pkgErrors.Wrap(err, "failed to delete old backup file")
+		}
 	}
+
+	return nil
 }
 
 func GetFileSizeFromUrl(url string) (int64, error) {
@@ -274,9 +363,15 @@ func GetFileSizeFromUrl(url string) (int64, error) {
 func CreateBackup() (string, error) {
 
 	backupFileName := "podgrab_backup_" + time.Now().Format("2006.01.02_150405") + ".tar.gz"
-	folder := createConfigFolderIfNotExists("backups")
+
+	folder, err := createConfigFolderIfNotExists("backups")
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to create backup folder")
+	}
+
 	configPath := os.Getenv("CONFIG")
 	tarballFilePath := path.Join(folder, backupFileName)
+
 	file, err := os.Create(tarballFilePath)
 	if err != nil {
 		return "", fmt.Errorf("could not create tarball file '%s', got error '%s'", tarballFilePath, err.Error())
@@ -295,10 +390,16 @@ func CreateBackup() (string, error) {
 	defer tarWriter.Close()
 
 	err = addFileToTarWriter(dbPath, tarWriter)
-	if err == nil {
-		deleteOldBackup()
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to add db file to tarball")
 	}
-	return backupFileName, err
+
+	err = deleteOldBackup()
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to delete old backup")
+	}
+
+	return backupFileName, nil
 }
 
 func addFileToTarWriter(filePath string, tarWriter *tar.Writer) error {
@@ -332,6 +433,7 @@ func addFileToTarWriter(filePath string, tarWriter *tar.Writer) error {
 
 	return nil
 }
+
 func httpClient() *http.Client {
 	client := http.Client{
 		CheckRedirect: func(r *http.Request, via []*http.Request) error {
@@ -343,10 +445,13 @@ func httpClient() *http.Client {
 	return &client
 }
 
-func getRequest(url string) (*http.Request, error) {
-	req, err := http.NewRequest("GET", url, nil)
+// createGetRequest creates an HTTP GET request for the specified URL.
+// It also sets a custom User-Agent header if it is defined in the settings.
+func createGetRequest(url string) (*http.Request, error) {
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, pkgErrors.Wrap(err, "failed to create request")
 	}
 
 	setting := db.GetOrCreateSetting()
@@ -357,33 +462,62 @@ func getRequest(url string) (*http.Request, error) {
 	return req, nil
 }
 
-func createFolder(folder string, parent string) string {
+// createFolder creates a sanitized folder within a specified parent directory.
+// It checks if the folder already exists, and if not, it creates the folder
+// and changes its ownership.
+func createFolder(folder string, parent string) (string, error) {
+
 	folder = cleanFileName(folder)
-	// str := stringy.New(folder)
 	folderPath := path.Join(parent, folder)
-	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
-		os.MkdirAll(folderPath, 0777)
-		changeOwnership(folderPath)
+
+	_, err := os.Stat(folderPath)
+	if err != nil {
+
+		if os.IsNotExist(err) {
+			err = os.MkdirAll(folderPath, 0777)
+			if err != nil {
+				return "", pkgErrors.Wrap(err, "failed to create folder")
+			}
+
+			err = changeOwnership(folderPath)
+			if err != nil {
+				return "", pkgErrors.Wrap(err, "failed to change ownership")
+			}
+		}
 	}
-	return folderPath
+
+	return folderPath, nil
 }
 
-func createDataFolderIfNotExists(folder string) string {
+func createDataFolderIfNotExists(folder string) (string, error) {
 	dataPath := os.Getenv("DATA")
 	return createFolder(folder, dataPath)
 }
-func createConfigFolderIfNotExists(folder string) string {
+func createConfigFolderIfNotExists(folder string) (string, error) {
 	dataPath := os.Getenv("CONFIG")
 	return createFolder(folder, dataPath)
 }
 
 func deletePodcastFolder(folder string) error {
-	return os.RemoveAll(createDataFolderIfNotExists(folder))
+
+	folder, err := createDataFolderIfNotExists(folder)
+	if err != nil {
+		return pkgErrors.Wrap(err, "failed to create data folder")
+	}
+
+	return os.RemoveAll(folder)
 }
 
-func getFileName(link string, title string, defaultExtension string) string {
+// generateFileName generates a sanitized file name based on the provided link, title,
+// and default extension. It parses the URL to extract the file path and extension,
+// and if no extension is found, it uses the default extension. The title is sanitized
+// and converted to kebab-case to form the final file name.
+func generateFileName(link string, title string, defaultExtension string) (string, error) {
+
 	fileUrl, err := url.Parse(link)
-	checkError(err)
+	if err != nil {
+		return "", pkgErrors.Wrap(err, "failed to parse url")
+	}
 
 	parsed := fileUrl.Path
 	ext := filepath.Ext(parsed)
@@ -391,18 +525,11 @@ func getFileName(link string, title string, defaultExtension string) string {
 	if len(ext) == 0 {
 		ext = defaultExtension
 	}
-	// str := stringy.New(title)
-	str := stringy.New(cleanFileName(title))
-	return str.KebabCase().Get() + ext
 
+	str := stringy.New(cleanFileName(title))
+	return str.KebabCase().Get() + ext, nil
 }
 
 func cleanFileName(original string) string {
 	return sanitize.Name(original)
-}
-
-func checkError(err error) {
-	if err != nil {
-		panic(err)
-	}
 }

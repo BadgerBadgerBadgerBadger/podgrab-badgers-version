@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"html/template"
+	"io"
 	"log"
+	"log/slog"
 	"os"
 	"path"
 	"strconv"
@@ -16,16 +18,46 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jasonlvhit/gocron"
 	_ "github.com/joho/godotenv/autoload"
+	pkgErrors "github.com/pkg/errors"
+	"golang.org/x/net/context"
 )
 
 func main() {
+
+	ctx := context.Background()
+
+	err := run(ctx, os.Args, os.Stdout)
+	if err != nil {
+		slog.Log(ctx, slog.LevelError, err.Error())
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, args []string, w io.Writer) error {
+
 	var err error
 	db.DB, err = db.Init()
 	if err != nil {
-		fmt.Println("statuse: ", err)
-	} else {
-		db.Migrate()
+		return pkgErrors.Wrap(err, "failed to initialize database")
 	}
+
+	err = db.Migrate()
+	if err != nil {
+		return pkgErrors.Wrap(err, "failed to migrate database")
+	}
+
+	go controllers.HandleWebsocketMessages()
+
+	go assetEnv()
+	go intiCron()
+
+	r := setupRouter()
+
+	return r.Run() // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
+}
+
+func setupRouter() *gin.Engine {
+
 	r := gin.Default()
 
 	r.Use(setupSettings())
@@ -198,14 +230,10 @@ func main() {
 	r.GET("/ws", func(c *gin.Context) {
 		controllers.WSHandler(c.Writer, c.Request)
 	})
-	go controllers.HandleWebsocketMessages()
 
-	go assetEnv()
-	go intiCron()
-
-	r.Run() // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
-
+	return r
 }
+
 func setupSettings() gin.HandlerFunc {
 	return func(c *gin.Context) {
 

@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.15.2
+ARG GO_VERSION=1.22.5
 
 FROM golang:${GO_VERSION}-alpine AS builder
 
@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 RUN go build -o ./app ./main.go
 
-FROM alpine:latest
+FROM alpine:3.20
 
 LABEL org.opencontainers.image.source="https://github.com/akhilrex/podgrab"
 

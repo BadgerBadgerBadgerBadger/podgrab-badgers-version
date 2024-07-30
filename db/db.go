@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 
+	pkgErrors "github.com/pkg/errors"
 	"gorm.io/driver/sqlite"
 
 	"gorm.io/gorm"
@@ -33,7 +34,11 @@ func Init() (*gorm.DB, error) {
 }
 
 // Migrate Database
-func Migrate() {
-	DB.AutoMigrate(&Podcast{}, &PodcastItem{}, &Setting{}, &Migration{}, &JobLock{}, &Tag{})
+func Migrate() error {
+	err := DB.AutoMigrate(&Podcast{}, &PodcastItem{}, &Setting{}, &Migration{}, &JobLock{}, &Tag{})
+	if err != nil {
+		return pkgErrors.Wrap(err, "failed to migrate database")
+	}
 	RunMigrations()
+	return nil
 }

@@ -6,8 +6,6 @@ import (
 	"path"
 	"regexp"
 	"strings"
-
-	parser "golang.org/x/net/html"
 )
 
 var (
@@ -149,39 +147,6 @@ var (
 	// We are far more restrictive with href attributes.
 	legalHrefAttr = regexp.MustCompile(`\A[/#][^/\\]?|mailto:|http://|https://`)
 )
-
-// cleanAttributes returns an array of attributes after removing malicious ones.
-func cleanAttributes(a []parser.Attribute, allowed []string) []parser.Attribute {
-	if len(a) == 0 {
-		return a
-	}
-
-	var cleaned []parser.Attribute
-	for _, attr := range a {
-		if includes(allowed, attr.Key) {
-
-			val := strings.ToLower(attr.Val)
-
-			// Check for illegal attribute values
-			if illegalAttr.FindString(val) != "" {
-				attr.Val = ""
-			}
-
-			// Check for legal href values - / mailto:// http:// or https://
-			if attr.Key == "href" {
-				if legalHrefAttr.FindString(val) == "" {
-					attr.Val = ""
-				}
-			}
-
-			// If we still have an attribute, append it to the array
-			if attr.Val != "" {
-				cleaned = append(cleaned, attr)
-			}
-		}
-	}
-	return cleaned
-}
 
 // A list of characters we consider separators in normal strings and replace with our canonical separator - rather than removing.
 var (
